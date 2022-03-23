@@ -21,45 +21,65 @@ static const char *TAG = "example";
 
 
 // Pin mapping
-#if CONFIG_IDF_TARGET_ESP32
+
 
 #define PIN_NUM_MISO 12
 #define PIN_NUM_MOSI 13
 #define PIN_NUM_CLK  14
 #define PIN_NUM_CS   15
 
-#elif CONFIG_IDF_TARGET_ESP32S2
 
-// adapted for internal test board ESP-32-S3-USB-OTG-Ev-BOARD_V1.0 (with ESP32-S2-MINI-1 module)
-#define PIN_NUM_MISO 37
-#define PIN_NUM_MOSI 35
-#define PIN_NUM_CLK  36
-#define PIN_NUM_CS   34
-
-#elif CONFIG_IDF_TARGET_ESP32C3
-#define PIN_NUM_MISO 6
-#define PIN_NUM_MOSI 4
-#define PIN_NUM_CLK  5
-#define PIN_NUM_CS   1
-
-#endif //CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
-
-#if CONFIG_IDF_TARGET_ESP32S2
-#define SPI_DMA_CHAN    host.slot
-#elif CONFIG_IDF_TARGET_ESP32C3
-#define SPI_DMA_CHAN    SPI_DMA_CH_AUTO
-#else
 #define SPI_DMA_CHAN    1
-#endif
+
+// Options for mounting the filesystem.
+// If format_if_mount_failed is set to true, SD card will be partitioned and
+// formatted in case when mounting fails.
+esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+    .format_if_mount_failed = true,
+    .max_files = 5,
+    .allocation_unit_size = 16 * 1024
+};
+sdmmc_card_t *card;
+const char mount_point[] = MOUNT_POINT;
+sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+
+DIR *dr = NULL;
+struct dirent *de;  // Pointer for directory entry
+long int cur_pos = 0;
+long int target_pos = 0;
+
+char path[1024];
+int pathLen = 0;
+
+void revert_path()
+{
+    int i = 0;
+    int lastPos = -1;
+
+    for (; i<1024 || path[i] == NULL; i++)
+    {
+        //the next i will always be greater than whatever is stored in lastPos
+        if (path[i] == '/')
+        {
+            lastPos = i;
+        }            
+    }
+
+    if (lastPos < 0 || path[lastPos] == NULL)
+        return;
+
+    path[lastPos] = NULL;
+
+}
 
 
 void list_files(void)
 {
-        struct dirent *de;  // Pointer for directory entry
+    
   
     // opendir() returns a pointer of DIR type. 
-    DIR *dr = opendir(MOUNT_POINT);
-  
+    //DIR *dr = opendir(MOUNT_POINT);
+    printf("Printing all files in current directory of %s\n", path);
     if (dr == NULL)  // opendir returns NULL if couldn't open directory
     {
         printf("Could not open current directory" );
@@ -69,30 +89,52 @@ void list_files(void)
     // Refer http://pubs.opengroup.org/onlinepubs/7990989775/xsh/readdir.html
     // for readdir()
         while ((de = readdir(dr)) != NULL)
-            printf("%s\n", de->d_name);
-  
-    closedir(dr);    
+            printf("type: %d, name: %s: %d\n", de->d_type, de->d_name, de->d_ino);
+    rewinddir(dr);
+    printf("Done\n\n");
+    //closedir(dr);    
     return 0;
 }
 
-void app_main(void)
+
+
+// FRESULT scan_files (
+//     char* path        /* Start node to be scanned (***also used as work area***) */
+// )
+// {
+//     FRESULT res;
+//     FF_DIR dir;
+//     UINT i;
+//     static FILINFO fno;
+
+
+//     res = f_opendir(&dir, path);                       /* Open the directory */
+//     if (res == FR_OK) {
+//         for (;;) {
+//             res = f_readdir(&dir, &fno);                   /* Read a directory item */
+//             if (res != FR_OK || fno.fname[0] == 0) break;  /* Break on error or end of dir */
+//             if (fno.fattrib & AM_DIR) {                    /* It is a directory */
+//                 i = strlen(path);
+//                 sprintf(&path[i], "/%s", fno.fname);
+//                 res = scan_files(path);                    /* Enter the directory */
+//                 if (res != FR_OK) break;
+//                 path[i] = 0;
+//             } else {                                       /* It is a file. */
+//                 printf("%s/%s\n", path, fno.fname);
+//             }
+//         }
+//         f_closedir(&dir);
+//     }
+
+//     return res;
+// }
+
+void mount_card(void)
 {
+
     esp_err_t ret;
 
-    // Options for mounting the filesystem.
-    // If format_if_mount_failed is set to true, SD card will be partitioned and
-    // formatted in case when mounting fails.
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-#ifdef CONFIG_EXAMPLE_FORMAT_IF_MOUNT_FAILED
-        .format_if_mount_failed = true,
-#else
-        .format_if_mount_failed = false,
-#endif // EXAMPLE_FORMAT_IF_MOUNT_FAILED
-        .max_files = 5,
-        .allocation_unit_size = 16 * 1024
-    };
-    sdmmc_card_t *card;
-    const char mount_point[] = MOUNT_POINT;
+
     ESP_LOGI(TAG, "Initializing SD card");
 
     // Use settings defined above to initialize SD card and mount FAT filesystem.
@@ -101,7 +143,7 @@ void app_main(void)
     // production applications.
     ESP_LOGI(TAG, "Using SPI peripheral");
 
-    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+
     spi_bus_config_t bus_cfg = {
         .mosi_io_num = PIN_NUM_MOSI,
         .miso_io_num = PIN_NUM_MISO,
@@ -139,60 +181,199 @@ void app_main(void)
 
     // Card has been initialized, print its properties
     sdmmc_card_print_info(stdout, card);
+}
 
-    // Use POSIX and C standard library functions to work with files.
+void print_current_file(void)
+{
 
-    // First create a file.
-    const char *file_hello = MOUNT_POINT"/hello.txt";
+    if (de != NULL)
+        printf("type: %d, name: %s: %d\n", de->d_type, de->d_name, de->d_ino);
+    else
+        printf("No more files\n");        
+}
 
-    ESP_LOGI(TAG, "Opening file %s", file_hello);
-    FILE *f = fopen(file_hello, "w");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for writing");
-        return;
+void open_dir(char* name)
+{
+    
+    if (dr != NULL)
+        closedir(dr);    
+
+    dr = opendir(name);
+}
+
+// void move_forward() 
+// {
+
+//     print_current_file();
+
+// }
+
+// void move_back()
+// {
+//     pos = telldir(dr);
+//     if (pos == 1)
+//     {
+//         printf("No more files\n");
+//     }
+//     else
+//     {
+//         pos-=2;
+//         seekdir(dr, pos);
+//         print_current_file();    
+//     }
+// }
+
+void navigate_to_target_pos_from_curr_dir() 
+{
+    //first look through the files then recurse through the dirs
+    while ((de = readdir(dr)) != NULL)
+    {
+        if (de->d_type == DT_REG)
+        {
+            printf("Looing at file %s in %s. Pos: %ld, Target: %ld\n", de->d_name, path, cur_pos, target_pos);
+            cur_pos++;
+            if (cur_pos >= target_pos)
+            {
+                return;
+            }
+        }
     }
-    fprintf(f, "Hello %s!\n", card->cid.name);
-    fclose(f);
-    ESP_LOGI(TAG, "File written");
 
-    const char *file_foo = MOUNT_POINT"/foo.txt";
+    //DIRs now
+    while ((de = readdir(dr)) != NULL)
+    {
+        if (de->d_type == DT_DIR)
+        {
+            strcat(path, "/");
+            strcat(path, de->d_name);
+            open_dir(path);     
+            navigate_to_target_pos_from_curr_dir();
+            revert_path();
+        }
+    }    
+}
 
-    // Check if destination file exists before renaming
-    struct stat st;
-    if (stat(file_foo, &st) == 0) {
-        // Delete it if it exists
-        unlink(file_foo);
-    }
+void navigate_to_pos() 
+{
+    rewinddir(dr);
+    strcpy(path, MOUNT_POINT);
+    cur_pos = 0;
+    navigate_to_target_pos_from_curr_dir();
+}
 
-    // Rename original file
-    ESP_LOGI(TAG, "Renaming file %s to %s", file_hello, file_foo);
-    if (rename(file_hello, file_foo) != 0) {
-        ESP_LOGE(TAG, "Rename failed");
-        return;
-    }
 
-    // Open renamed file for reading
-    ESP_LOGI(TAG, "Reading file %s", file_foo);
-    f = fopen(file_foo, "r");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Failed to open file for reading");
-        return;
-    }
 
-    // Read a line from file
-    char line[64];
-    fgets(line, sizeof(line), f);
-    fclose(f);
 
-    // Strip newline
-    char *pos = strchr(line, '\n');
-    if (pos) {
-        *pos = '\0';
-    }
-    ESP_LOGI(TAG, "Read from file: '%s'", line);
+void app_main(void)
+{
+    
+
+    strcat (path, MOUNT_POINT);
+    pathLen = 7;
+
+    printf("Path: %s\n", path);
+
+    const char * addPath = "/newPath";
+    //char * newPath = path;
+    strcat (path, addPath);
+    pathLen += 8;
+    //path = newPath;
+    printf("Path: %s\n", path);
+
+    revert_path();
+    printf("Path: %s\n", path);
+
+    strcat (path, "/nextPath");
+    printf("Path: %s\n", path);
+
+    //return;
+
+    // // Use POSIX and C standard library functions to work with files.
+
+    // // First create a file.
+    // const char *file_hello = MOUNT_POINT"/hello.txt";
+
+    // ESP_LOGI(TAG, "Opening file %s", file_hello);
+    // FILE *f = fopen(file_hello, "w");
+    // if (f == NULL) {
+    //     ESP_LOGE(TAG, "Failed to open file for writing");
+    //     return;
+    // }
+    // fprintf(f, "Hello %s!\n", card->cid.name);
+    // fclose(f);
+    // ESP_LOGI(TAG, "File written");
+
+    // const char *file_foo = MOUNT_POINT"/foo.txt";
+
+    // // Check if destination file exists before renaming
+    // struct stat st;
+    // if (stat(file_foo, &st) == 0) {
+    //     // Delete it if it exists
+    //     unlink(file_foo);
+    // }
+
+    // // Rename original file
+    // ESP_LOGI(TAG, "Renaming file %s to %s", file_hello, file_foo);
+    // if (rename(file_hello, file_foo) != 0) {
+    //     ESP_LOGE(TAG, "Rename failed");
+    //     return;
+    // }
+
+    // // Open renamed file for reading
+    // ESP_LOGI(TAG, "Reading file %s", file_foo);
+    // f = fopen(file_foo, "r");
+    // if (f == NULL) {
+    //     ESP_LOGE(TAG, "Failed to open file for reading");
+    //     return;
+    // }
+
+    // // Read a line from file
+    // char line[64];
+    // fgets(line, sizeof(line), f);
+    // fclose(f);
+
+    // // Strip newline
+    // char *pos = strchr(line, '\n');
+    // if (pos) {
+    //     *pos = '\0';
+    // }
+    // ESP_LOGI(TAG, "Read from file: '%s'", line);
+
+    mount_card();
+    open_dir(MOUNT_POINT);
+
 
     list_files();
 
+    target_pos = 0;
+    navigate_to_pos();
+    print_current_file();
+
+    target_pos = 1;
+    navigate_to_pos();
+    print_current_file();
+    
+
+    target_pos = 3;
+    navigate_to_pos();
+    print_current_file();
+    
+    target_pos = 2;
+    navigate_to_pos();
+    print_current_file();
+    
+// print_current_file();
+// move_forward() ;
+// move_forward() ;
+// move_back();
+// move_back();
+// move_back();
+// move_forward() ;
+// move_forward() ;
+// move_forward() ;
+// move_forward(); 
+// move_forward(); 
+// move_forward(); 
     // All done, unmount partition and disable SPI peripheral
     esp_vfs_fat_sdcard_unmount(mount_point, card);
     ESP_LOGI(TAG, "Card unmounted");

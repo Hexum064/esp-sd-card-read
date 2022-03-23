@@ -15,6 +15,7 @@
     "files.associations": {
         "*.ipp": "c",
         "dirent.h": "c",
-        "esp_vfs_fat.h": "c"
+        "esp_vfs_fat.h": "c",
+        "typeinfo": "c"
     }
 }
