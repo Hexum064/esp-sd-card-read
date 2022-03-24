@@ -19,7 +19,7 @@ static const char *TAG = "example";
 
 #define MOUNT_POINT "/sdcard"
 
-
+//#define DEBUG
 // Pin mapping
 
 
@@ -49,7 +49,7 @@ long int cur_pos = 0;
 long int target_pos = 0;
 
 char path[1024];
-int pathLen = 0;
+
 
 void revert_path()
 {
@@ -187,9 +187,9 @@ void print_current_file(void)
 {
 
     if (de != NULL)
-        printf("type: %d, name: %s: %d\n", de->d_type, de->d_name, de->d_ino);
+        printf("%s/%s\n", path, de->d_name);
     else
-        printf("No more files\n");        
+        printf("File not found\n");        
 }
 
 void open_dir(char* name)
@@ -225,58 +225,112 @@ void open_dir(char* name)
 
 void navigate_to_target_pos_from_curr_dir() 
 {
+    long int cur_dir = 0;
+
+    if (target_pos < 1)
+        return;
+
     //first look through the files then recurse through the dirs
     while ((de = readdir(dr)) != NULL)
     {
         if (de->d_type == DT_REG)
         {
-            printf("Looing at file %s in %s. Pos: %ld, Target: %ld\n", de->d_name, path, cur_pos, target_pos);
             cur_pos++;
-            if (cur_pos >= target_pos)
+#ifdef DEBUG
+            printf("Looing at file %s in %s. Pos: %ld, Target: %ld\n", de->d_name, path, cur_pos, target_pos);
+#endif        
+            if (cur_pos == target_pos)
             {
+#ifdef DEBUG                
+                printf("File found at pos: %ld\n", cur_pos);
+#endif        
                 return;
             }
+            
+#ifdef DEBUG 
+            printf("Inc cur_pos to %ld\n", cur_pos);
+#endif
         }
     }
+
+    rewinddir(dr);
 
     //DIRs now
     while ((de = readdir(dr)) != NULL)
     {
         if (de->d_type == DT_DIR)
         {
+            cur_dir = telldir(dr);
+
             strcat(path, "/");
             strcat(path, de->d_name);
+            
             open_dir(path);     
+#ifdef DEBUG            
+            printf("Navigating to path %s\n", path);
+#endif            
             navigate_to_target_pos_from_curr_dir();
+
+            if (cur_pos == target_pos)
+            {
+#ifdef DEBUG                
+                printf("File found at pos: %ld\n", cur_pos);
+#endif                
+                return;
+            }
+
             revert_path();
+#ifdef DEBUG            
+            printf("Returning to %s\n", path);
+#endif            
+            open_dir(path);   
+            seekdir(dr, cur_dir + 1);
         }
-    }    
+    }  
+#ifdef DEBUG
+    printf("No more files or dirs in %s\n", path);
+#endif    
 }
 
 void navigate_to_pos() 
 {
-    rewinddir(dr);
+    de = NULL;
     strcpy(path, MOUNT_POINT);
+    open_dir(path); 
     cur_pos = 0;
     navigate_to_target_pos_from_curr_dir();
 }
 
 
+void get_next_file()
+{
+    target_pos++;
+    navigate_to_pos();
+}
 
+
+void get_prev_file()
+{
+    if (target_pos > 0)
+    {
+        target_pos--;
+        navigate_to_pos();
+    }
+}
 
 void app_main(void)
 {
     
 
     strcat (path, MOUNT_POINT);
-    pathLen = 7;
+    
 
     printf("Path: %s\n", path);
 
     const char * addPath = "/newPath";
     //char * newPath = path;
     strcat (path, addPath);
-    pathLen += 8;
+    
     //path = newPath;
     printf("Path: %s\n", path);
 
@@ -344,24 +398,71 @@ void app_main(void)
 
 
     list_files();
-
     target_pos = 0;
     navigate_to_pos();
     print_current_file();
 
-    target_pos = 1;
-    navigate_to_pos();
+    get_next_file();
     print_current_file();
+
+get_next_file();
+    print_current_file();
+
+    get_next_file();
+    print_current_file();
+
+    get_next_file();
+    print_current_file();
+
+    get_next_file();
+    print_current_file();
+
+    get_next_file();
+    print_current_file();
+
+    get_prev_file();
+    print_current_file();
+
+        get_prev_file();
+    print_current_file();
+
+        get_prev_file();
+    print_current_file();
+
+        get_prev_file();
+    print_current_file();
+
+        get_prev_file();
+    print_current_file();
+
+        get_prev_file();
+    print_current_file();
+
+    // target_pos = 0;
+    // navigate_to_pos();
+    // print_current_file();
+
+    // target_pos = 1;
+    // navigate_to_pos();
+    // print_current_file();
     
 
-    target_pos = 3;
-    navigate_to_pos();
-    print_current_file();
+    // target_pos = 3;
+    // navigate_to_pos();
+    // print_current_file();
     
-    target_pos = 2;
-    navigate_to_pos();
-    print_current_file();
+    // target_pos = 2;
+    // navigate_to_pos();
+    // print_current_file();
     
+    // target_pos = 6;
+    // navigate_to_pos();
+    // print_current_file();    
+
+    // target_pos = 7;
+    // navigate_to_pos();
+    // print_current_file();  
+
 // print_current_file();
 // move_forward() ;
 // move_forward() ;
